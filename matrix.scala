@@ -66,9 +66,9 @@ def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
     Result.Measure(runtime, ms)
 
 @main def matrix(): Unit =
-  val modes = Seq("debug") // , "release-fast", "release-size", "release-full")
-  val ltos = Seq("none") // , "full", "thin")
-  val gcs = Seq("immix") // , "commix", "boehm", "none")
+  val modes = Seq("debug", "release-fast", "release-size", "release-full")
+  val ltos = Seq("none", "full", "thin")
+  val gcs = Seq("immix", "commix", "boehm", "none")
 
   // change the benchmark here
   val benchSrc = pwd / "pipeline.scala"
