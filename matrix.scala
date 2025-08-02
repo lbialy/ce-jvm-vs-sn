@@ -31,7 +31,7 @@ enum Runtime:
           "-f" // overwrite
         )
       case GraalvmNativeImage =>
-        Seq("--native-image", "-f", "--graalvm-args", "--no-fallback", "--install-exit-handlers")
+        Seq("--native-image", "-f", "--graalvm-args", "--no-fallback", "--graalvm-args", "--install-exit-handlers")
 
 enum Result:
   case Measure(runtime: Runtime, ms: String)
@@ -50,7 +50,7 @@ def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
   val packageOut = proc(cmd).call(cwd = pwd, check = false, stderr = os.Pipe)
   if packageOut.exitCode != 0 then
     cb()
-    Result.Failed(runtime, packageOut.out.text())
+    Result.Failed(runtime, packageOut.out.text() + "\n" + packageOut.err.text())
   else
     val execOut = proc(s"./$bin").call(cwd = pwd, check = false, stderr = os.Pipe)
     val stdOut = execOut.out.text()
@@ -66,9 +66,9 @@ def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
     Result.Measure(runtime, ms)
 
 @main def matrix(): Unit =
-  val modes = Seq("debug", "release-fast", "release-size", "release-full")
-  val ltos = Seq("none", "full", "thin")
-  val gcs = Seq("immix", "commix", "boehm", "none")
+  val modes = Seq("debug") // , "release-fast", "release-size", "release-full")
+  val ltos = Seq("none") // , "full", "thin")
+  val gcs = Seq("immix") // , "commix", "boehm", "none")
 
   // change the benchmark here
   val benchSrc = pwd / "pipeline.scala"
