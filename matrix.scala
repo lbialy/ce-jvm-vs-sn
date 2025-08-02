@@ -7,11 +7,13 @@ import os.{proc, pwd}
 enum Runtime:
   case Jvm
   case Sn(mode: String, lto: String, gc: String)
+  case GraalvmNativeImage
 
   def bin: String =
     this match
-      case Jvm               => "bench-jvm"
-      case Sn(mode, lto, gc) => s"bench-sn-${mode}-${lto}-${gc}"
+      case Jvm                => "bench-jvm"
+      case Sn(mode, lto, gc)  => s"bench-sn-${mode}-${lto}-${gc}"
+      case GraalvmNativeImage => "bench-graalvm-ni"
 
   def packageArgs: Seq[String] =
     this match
@@ -28,6 +30,8 @@ enum Runtime:
           gc,
           "-f" // overwrite
         )
+      case GraalvmNativeImage =>
+        Seq("--native-image", "-f", "--graalvm-args", "--no-fallback", "--install-exit-handlers")
 
 enum Result:
   case Measure(runtime: Runtime, ms: String)
@@ -78,7 +82,7 @@ def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
   do println(s"mode: $mode, lto: $lto, gc: $gc")
   println("mode: jvm, lto: n/a, gc: parallel")
 
-  val totalVariants = modes.length * ltos.length * gcs.length + 1 // +1 for jvm
+  val totalVariants = modes.length * ltos.length * gcs.length + 2 // +1 for jvm, +1 for graalvm-ni
   var completedVariants = 0
 
   def updateProgress(): Unit =
@@ -113,7 +117,21 @@ def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
     }
   )
 
-  val results = snResults ++ Seq(jvmResult)
+  val graalvmNativeImageResult = run(
+    benchSrc,
+    Runtime.GraalvmNativeImage,
+    () => {
+      completedVariants += 1
+      updateProgress()
+    }
+  )
+
+  val results = (snResults ++ Seq(jvmResult) ++ Seq(graalvmNativeImageResult))
+  val measurements = results
+    .collect[Result.Measure] { case Result.Measure(runtime, ms) =>
+      Result.Measure(runtime, ms)
+    }
+    .sortBy(_.ms)
 
   // Print table
   val header = f"${"mode"}%-13s${"lto"}%-6s${"gc"}%-7s${"ms"}%7s"
@@ -121,13 +139,12 @@ def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
   println(header)
   println("-" * header.length)
 
-  for Result.Measure(runtime, ms) <- results.collect[Result.Measure] { case Result.Measure(runtime, ms) =>
-      Result.Measure(runtime, ms)
-    }
+  for Result.Measure(runtime, ms) <- measurements
   do
     runtime match
-      case Runtime.Jvm               => println(f"${"jvm"}%-13s${"n/a"}%-6s${"n/a"}%-7s${ms}%7s")
-      case Runtime.Sn(mode, lto, gc) => println(f"${mode}%-13s${lto}%-6s${gc}%-7s${ms}%7s")
+      case Runtime.Jvm                => println(f"${"jvm"}%-13s${"n/a"}%-6s${"n/a"}%-7s${ms}%7s")
+      case Runtime.Sn(mode, lto, gc)  => println(f"${mode}%-13s${lto}%-6s${gc}%-7s${ms}%7s")
+      case Runtime.GraalvmNativeImage => println(f"${"graalvm-ni"}%-13s${"n/a"}%-6s${"n/a"}%-7s${ms}%7s")
 
   println()
   println("-" * header.length)
@@ -138,5 +155,6 @@ def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
     }
   do
     runtime match
-      case Runtime.Jvm               => println(f"${"jvm"}%-13s${"n/a"}%-6s${"n/a"}%-7s${error}")
-      case Runtime.Sn(mode, lto, gc) => println(f"${mode}%-13s${lto}%-6s${gc}%-7s${error}")
+      case Runtime.Jvm                => println(f"${"jvm"}%-13s${"n/a"}%-6s${"n/a"}%-7s${error}")
+      case Runtime.Sn(mode, lto, gc)  => println(f"${mode}%-13s${lto}%-6s${gc}%-7s${error}")
+      case Runtime.GraalvmNativeImage => println(f"${"graalvm-ni"}%-13s${"n/a"}%-6s${"n/a"}%-7s${error}")
