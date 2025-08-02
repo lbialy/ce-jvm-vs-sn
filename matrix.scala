@@ -81,6 +81,7 @@ def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
     gc <- gcs
   do println(s"mode: $mode, lto: $lto, gc: $gc")
   println("mode: jvm, lto: n/a, gc: parallel")
+  println("mode: graalvm-ni, lto: n/a, gc: parallel")
 
   val totalVariants = modes.length * ltos.length * gcs.length + 2 // +1 for jvm, +1 for graalvm-ni
   var completedVariants = 0
