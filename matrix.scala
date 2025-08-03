@@ -37,10 +37,10 @@ enum Result:
   case Measure(runtime: Runtime, ms: String)
   case Failed(runtime: Runtime, error: String)
 
-def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
+def run(benchSrc: os.Path, runtime: Runtime, queueCap: Int = 1024, cb: () => Unit): Result =
   val bin = runtime.bin
   val cmd = Seq(
-    "scala-cli",
+    "scala",
     "package",
     benchSrc.toString,
     "-o",
@@ -56,18 +56,23 @@ def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
     val stdOut = execOut.out.text()
     val stdErr = execOut.err.text()
     val ms = stdOut.linesIterator
-      .collectFirst { case s"concurrent producer→consumer (1000000 msgs, 1024 queue cap): $ms ms" =>
-        ms
+      .collectFirst {
+        case s"concurrent producer→consumer (1000000 msgs, $cap queue cap): $ms ms" if cap.toInt == queueCap =>
+          ms
       }
       .getOrElse {
-        throw Exception(s"could not find ms in:\n$stdOut\n$stdErr")
+        throw Exception(s"could not find ms for queue cap $queueCap in:\n$stdOut\n$stdErr")
       }
     cb()
     Result.Measure(runtime, ms)
 
 @main def matrix(): Unit =
+  val queueCaps = Seq(1, 1024, 65534)
   val modes = Seq("debug", "release-fast", "release-size", "release-full")
-  val ltos = Seq("none", "full", "thin")
+  val ltos =
+    val osName = System.getProperty("os.name").toLowerCase
+    if osName.contains("mac") || osName.contains("darwin") then Seq("none", "full") // Filter out "thin" on macOS
+    else Seq("none", "full", "thin")
   val gcs = Seq("immix", "commix", "boehm", "none")
 
   // change the benchmark here
@@ -76,14 +81,16 @@ def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
 
   println("complete matrix:")
   for
+    queueCap <- queueCaps
     mode <- modes
     lto <- ltos
     gc <- gcs
-  do println(s"mode: $mode, lto: $lto, gc: $gc")
-  println("mode: jvm, lto: n/a, gc: parallel")
-  println("mode: graalvm-ni, lto: n/a, gc: parallel")
+  do println(s"queue cap: $queueCap, mode: $mode, lto: $lto, gc: $gc")
+  for queueCap <- queueCaps do println(s"queue cap: $queueCap, mode: jvm, lto: n/a, gc: parallel")
+  for queueCap <- queueCaps do println(s"queue cap: $queueCap, mode: graalvm-ni, lto: n/a, gc: parallel")
 
-  val totalVariants = modes.length * ltos.length * gcs.length + 2 // +1 for jvm, +1 for graalvm-ni
+  // +1 for jvm, +1 for graalvm-ni * queueCaps.length
+  val totalVariants = modes.length * ltos.length * gcs.length + (2 * queueCaps.length)
   var completedVariants = 0
 
   def updateProgress(): Unit =
@@ -103,31 +110,38 @@ def run(benchSrc: os.Path, runtime: Runtime, cb: () => Unit): Result =
   yield run(
     benchSrc,
     Runtime.Sn(mode, lto, gc),
+    1024, // default queue cap
     () => {
       completedVariants += 1
       updateProgress()
     }
   )
 
-  val jvmResult = run(
-    benchSrc,
-    Runtime.Jvm,
-    () => {
-      completedVariants += 1
-      updateProgress()
-    }
-  )
+  val jvmResults =
+    for queueCap <- queueCaps
+    yield run(
+      benchSrc,
+      Runtime.Jvm,
+      queueCap,
+      () => {
+        completedVariants += 1
+        updateProgress()
+      }
+    )
 
-  val graalvmNativeImageResult = run(
-    benchSrc,
-    Runtime.GraalvmNativeImage,
-    () => {
-      completedVariants += 1
-      updateProgress()
-    }
-  )
+  val graalvmNativeImageResults =
+    for queueCap <- queueCaps
+    yield run(
+      benchSrc,
+      Runtime.GraalvmNativeImage,
+      queueCap,
+      () => {
+        completedVariants += 1
+        updateProgress()
+      }
+    )
 
-  val results = (snResults ++ Seq(jvmResult) ++ Seq(graalvmNativeImageResult))
+  val results = snResults ++ jvmResults ++ graalvmNativeImageResults
   val measurements = results
     .collect[Result.Measure] { case Result.Measure(runtime, ms) =>
       Result.Measure(runtime, ms)
