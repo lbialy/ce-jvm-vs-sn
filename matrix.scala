@@ -52,7 +52,7 @@ def run(benchSrc: os.Path, runtime: Runtime, queueCap: Int = 1024, cb: () => Uni
     cb()
     Result.Failed(runtime, packageOut.out.text() + "\n" + packageOut.err.text())
   else
-    val execOut = proc(s"./$bin").call(cwd = pwd, check = false, stderr = os.Pipe)
+    val execOut = proc(s"./$bin").call(cwd = pwd, check = false, stderr = os.Pipe, env = Map("CAP" -> queueCap.toString()))
     val stdOut = execOut.out.text()
     val stdErr = execOut.err.text()
     val res = stdOut.linesIterator
