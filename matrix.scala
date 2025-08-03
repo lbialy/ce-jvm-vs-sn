@@ -69,7 +69,7 @@ def run(benchSrc: os.Path, runtime: Runtime, queueCaps: Seq[Int], cb: Int => Uni
         }
         .map(ms => Result.Measure(runtime, queueCap, ms))
         .getOrElse {
-          Result.Measure(runtime, queueCap, s"could not find ms for queue cap $queueCap in:\n$stdOut\n$stdErr")
+          Result.Failed(runtime, queueCap, s"could not find ms for queue cap $queueCap in:\n$stdOut\n$stdErr")
         }
       cb(queueCap)
       res
