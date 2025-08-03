@@ -71,12 +71,12 @@ def run(benchSrc: os.Path, runtime: Runtime, queueCaps: Seq[Int], cb: () => Unit
 
 @main def matrix(): Unit =
   val queueCaps = Seq(1, 1024, 65534)
-  val modes = Seq("debug") // , "release-fast", "release-size", "release-full")
+  val modes = Seq("debug", "release-fast", "release-size", "release-full")
   val ltos =
     val osName = System.getProperty("os.name").toLowerCase
-    if osName.contains("mac") || osName.contains("darwin") then Seq("none") // , "full") // Filter out "thin" on macOS
+    if osName.contains("mac") || osName.contains("darwin") then Seq("none", "full") // Filter out "thin" on macOS
     else Seq("none", "full", "thin")
-  val gcs = Seq("immix") // , "commix", "boehm", "none")
+  val gcs = Seq("immix", "commix", "boehm", "none")
 
   // change the benchmark here
   val benchSrc = pwd / "pipeline.scala"
