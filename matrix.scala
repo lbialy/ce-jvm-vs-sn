@@ -55,16 +55,17 @@ def run(benchSrc: os.Path, runtime: Runtime, queueCap: Int = 1024, cb: () => Uni
     val execOut = proc(s"./$bin").call(cwd = pwd, check = false, stderr = os.Pipe)
     val stdOut = execOut.out.text()
     val stdErr = execOut.err.text()
-    val ms = stdOut.linesIterator
+    val res = stdOut.linesIterator
       .collectFirst {
         case s"concurrent producer→consumer (1000000 msgs, $cap queue cap): $ms ms" if cap.toInt == queueCap =>
           ms
       }
+      .map(ms => Result.Measure(runtime, ms))
       .getOrElse {
-        throw Exception(s"could not find ms for queue cap $queueCap in:\n$stdOut\n$stdErr")
+        Result.Measure(runtime, s"could not find ms for queue cap $queueCap in:\n$stdOut\n$stdErr")
       }
     cb()
-    Result.Measure(runtime, ms)
+    res
 
 @main def matrix(): Unit =
   val queueCaps = Seq(1, 1024, 65534)
