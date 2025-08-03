@@ -92,7 +92,7 @@ def run(benchSrc: os.Path, runtime: Runtime, queueCaps: Seq[Int], cb: () => Unit
   for queueCap <- queueCaps do println(s"queue cap: $queueCap, mode: jvm, lto: n/a, gc: parallel")
   for queueCap <- queueCaps do println(s"queue cap: $queueCap, mode: graalvm-ni, lto: n/a, gc: parallel")
 
-  val totalVariants = (modes.length + 2) * ltos.length * gcs.length * queueCaps.length
+  val totalVariants = modes.length * ltos.length * gcs.length * queueCaps.length + (2 * queueCaps.length)
   var completedVariants = 0
 
   def updateProgress(): Unit =
