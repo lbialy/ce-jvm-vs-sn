@@ -162,7 +162,7 @@ def run(benchSrc: os.Path, runtime: Runtime, queueCaps: Seq[Int], cb: Int => Uni
     .collect[Result.Measure] { case Result.Measure(runtime, queueCap, ms) =>
       Result.Measure(runtime, queueCap, ms)
     }
-    .sortBy(_.ms)
+    .sortBy(_.ms.toInt)
 
   // Print table
   val header = f"${"mode"}%-13s${"lto"}%-6s${"gc"}%-7s${"cap"}%7s${"ms"}%7s"
