@@ -37,7 +37,7 @@ enum Result:
   case Measure(runtime: Runtime, ms: String)
   case Failed(runtime: Runtime, error: String)
 
-def run(benchSrc: os.Path, runtime: Runtime, queueCap: Int = 1024, cb: () => Unit): Result =
+def run(benchSrc: os.Path, runtime: Runtime, queueCaps: Seq[Int], cb: () => Unit): Seq[Result] =
   val bin = runtime.bin
   val cmd = Seq(
     "scala",
@@ -50,31 +50,33 @@ def run(benchSrc: os.Path, runtime: Runtime, queueCap: Int = 1024, cb: () => Uni
   val packageOut = proc(cmd).call(cwd = pwd, check = false, stderr = os.Pipe)
   if packageOut.exitCode != 0 then
     cb()
-    Result.Failed(runtime, packageOut.out.text() + "\n" + packageOut.err.text())
+    Seq(Result.Failed(runtime, packageOut.out.text() + "\n" + packageOut.err.text()))
   else
-    val execOut = proc(s"./$bin").call(cwd = pwd, check = false, stderr = os.Pipe, env = Map("CAP" -> queueCap.toString()))
-    val stdOut = execOut.out.text()
-    val stdErr = execOut.err.text()
-    val res = stdOut.linesIterator
-      .collectFirst {
-        case s"concurrent producer→consumer (1000000 msgs, $cap queue cap): $ms ms" if cap.toInt == queueCap =>
-          ms
-      }
-      .map(ms => Result.Measure(runtime, ms))
-      .getOrElse {
-        Result.Measure(runtime, s"could not find ms for queue cap $queueCap in:\n$stdOut\n$stdErr")
-      }
-    cb()
-    res
+    for queueCap <- queueCaps yield
+      val execOut =
+        proc(s"./$bin").call(cwd = pwd, check = false, stderr = os.Pipe, env = Map("CAP" -> queueCap.toString()))
+      val stdOut = execOut.out.text()
+      val stdErr = execOut.err.text()
+      val res = stdOut.linesIterator
+        .collectFirst {
+          case s"concurrent producer→consumer (1000000 msgs, $cap queue cap): $ms ms" if cap.toInt == queueCap =>
+            ms
+        }
+        .map(ms => Result.Measure(runtime, ms))
+        .getOrElse {
+          Result.Measure(runtime, s"could not find ms for queue cap $queueCap in:\n$stdOut\n$stdErr")
+        }
+      cb()
+      res
 
 @main def matrix(): Unit =
   val queueCaps = Seq(1, 1024, 65534)
-  val modes = Seq("debug", "release-fast", "release-size", "release-full")
+  val modes = Seq("debug") // , "release-fast", "release-size", "release-full")
   val ltos =
     val osName = System.getProperty("os.name").toLowerCase
-    if osName.contains("mac") || osName.contains("darwin") then Seq("none", "full") // Filter out "thin" on macOS
+    if osName.contains("mac") || osName.contains("darwin") then Seq("none") // , "full") // Filter out "thin" on macOS
     else Seq("none", "full", "thin")
-  val gcs = Seq("immix", "commix", "boehm", "none")
+  val gcs = Seq("immix") // , "commix", "boehm", "none")
 
   // change the benchmark here
   val benchSrc = pwd / "pipeline.scala"
@@ -90,8 +92,7 @@ def run(benchSrc: os.Path, runtime: Runtime, queueCap: Int = 1024, cb: () => Uni
   for queueCap <- queueCaps do println(s"queue cap: $queueCap, mode: jvm, lto: n/a, gc: parallel")
   for queueCap <- queueCaps do println(s"queue cap: $queueCap, mode: graalvm-ni, lto: n/a, gc: parallel")
 
-  // +1 for jvm, +1 for graalvm-ni * queueCaps.length
-  val totalVariants = modes.length * ltos.length * gcs.length + (2 * queueCaps.length)
+  val totalVariants = (modes.length + 2) * ltos.length * gcs.length * queueCaps.length
   var completedVariants = 0
 
   def updateProgress(): Unit =
@@ -108,22 +109,22 @@ def run(benchSrc: os.Path, runtime: Runtime, queueCap: Int = 1024, cb: () => Uni
     mode <- modes
     lto <- ltos
     gc <- gcs
-  yield run(
-    benchSrc,
-    Runtime.Sn(mode, lto, gc),
-    1024, // default queue cap
-    () => {
-      completedVariants += 1
-      updateProgress()
-    }
-  )
+    res <- run(
+      benchSrc,
+      Runtime.Sn(mode, lto, gc),
+      queueCaps, // default queue cap
+      () => {
+        completedVariants += 1
+        updateProgress()
+      }
+    )
+  yield res
 
   val jvmResults =
-    for queueCap <- queueCaps
-    yield run(
+    run(
       benchSrc,
       Runtime.Jvm,
-      queueCap,
+      queueCaps,
       () => {
         completedVariants += 1
         updateProgress()
@@ -131,11 +132,10 @@ def run(benchSrc: os.Path, runtime: Runtime, queueCap: Int = 1024, cb: () => Uni
     )
 
   val graalvmNativeImageResults =
-    for queueCap <- queueCaps
-    yield run(
+    run(
       benchSrc,
       Runtime.GraalvmNativeImage,
-      queueCap,
+      queueCaps,
       () => {
         completedVariants += 1
         updateProgress()
